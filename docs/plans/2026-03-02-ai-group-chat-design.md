@@ -10,190 +10,254 @@ When researching a topic, switching between different LLMs (Claude, Gemini, GPT)
 
 ## Solution
 
-A web-based group chat tool where humans and AI bots coexist. The core feature is **group discussions** where multiple AI models participate simultaneously, share context, and naturally form different perspectives on the same topic.
+A desktop group chat tool where humans and AI bots coexist. The core feature is **group discussions** where multiple AI models participate simultaneously, share context, and naturally form different perspectives — including debating each other.
 
 ## Product Form
 
-- **Web application** (Next.js full-stack)
-- **Target users**: Personal / small team use
-- **No SaaS features** needed (no billing, multi-tenancy)
+- **Tauri desktop application** (Rust backend + React frontend)
+- **Target users**: Developers and power users who use multiple LLMs
+- **Open-source project**
+- **No server required** — all data stored locally
 
 ## Architecture
 
-### Approach: Monolithic Next.js + SSE
+### Approach: Tauri Desktop App
 
-Single Next.js application handling both frontend and backend. Server-Sent Events (SSE) for streaming AI responses. SQLite for data storage.
+Tauri app with Rust backend handling AI API calls and SQLite storage, React frontend for the chat UI. No CORS issues since Rust makes HTTP requests directly.
 
-**Why this approach:**
-- Simplest to develop and deploy
-- SSE is sufficient for AI streaming (same as ChatGPT)
-- SQLite is zero-config, sufficient for personal/small team use
-- Multiple Bot parallel replies handled via multiple SSE connections
+**Why Tauri:**
+- Lightweight (~10MB vs Electron's ~100MB+)
+- Rust backend handles API calls — no CORS restrictions
+- SQLite built-in via Rust — zero external dependencies
+- Active open-source ecosystem
+- Cross-platform (macOS, Windows, Linux)
 
 ### Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Framework | Next.js App Router |
-| Database | SQLite + Prisma ORM |
-| Auth | NextAuth.js (email + password) |
+| App Framework | Tauri v2 |
+| Backend | Rust (reqwest for HTTP, rusqlite for DB) |
+| Frontend | Vite + React + TypeScript |
 | UI | shadcn/ui + Tailwind CSS |
-| AI Integration | Vercel AI SDK |
-| State | React hooks + SWR |
+| Database | SQLite (local file) |
+| AI Protocol | OpenAI-compatible API (universal) |
+| State | Zustand |
 
 ## Data Model
 
-### User
-- id, email, password_hash, name, avatar
-- type: "human" | "bot"
-- bot_config (bot only): { provider, model, system_prompt }
+### Bot
+- id, name, avatar_color
+- base_url (e.g., "http://localhost:8080/v1", "https://openrouter.ai/api/v1")
+- api_key (encrypted)
+- model (e.g., "claude-sonnet-4-20250514", "gemini-2.5-pro")
+- system_prompt
+- supports_vision: boolean
+- created_at
 
-### ApiKey
-- user_id, provider, encrypted_key
-- Each user can configure one key per provider
-
-### Conversation
-- id, title, type: "direct" | "group"
-- created_by (only humans can create)
+### Topic (Group Chat)
+- id, title
 - created_at, updated_at
 
-### ConversationMember
-- conversation_id, user_id
-- role: "owner" | "member"
+### TopicBot (many-to-many)
+- topic_id, bot_id
 
 ### Message
-- id, conversation_id, sender_id
-- content (markdown), created_at
-- parent_id (optional, for @reply tracking)
+- id, topic_id
+- sender_type: "human" | "bot"
+- sender_bot_id (nullable, for bot messages)
+- content (markdown)
+- created_at
+
+### Attachment
+- id, message_id
+- file_name, file_path (local path in app data dir)
+- file_type: "image" | "file"
+- mime_type
+- created_at
 
 **Key decisions:**
-- Bots are a special type of User — unified message model
-- Same AI provider can have multiple bots (e.g., Claude Opus vs Claude Sonnet with different system prompts)
-- Conversation model is unified, `type` field distinguishes direct vs group
-- Information isolation is achieved naturally via `conversation_id`
+- **OpenAI-compatible API as universal protocol** — works with CLIProxyAPI, OpenRouter, MiniMax, Kimi, native OpenAI, and any compatible endpoint
+- Same provider can have multiple Bots (e.g., Claude Opus vs Claude Sonnet with different system prompts)
+- No user auth needed — single-user desktop app
+- Attachments stored as local files, referenced by path
 
-## Core Interaction Flows
+## Core Interaction Flow
 
 ### Group Discussion (Primary Feature)
 
-1. Human sends message → saved to DB
-2. System identifies all Bot members in the group
-3. Parallel requests to all Bot APIs with full conversation history as context
-4. Each Bot's response streams back via independent SSE connection
-5. Frontend displays multiple streams simultaneously
-6. All responses saved to DB
-
-**Context passing**: Each Bot receives the complete message history of the group, including other Bots' responses. This naturally enables cross-model debate.
+```
+Human types message + optional file/image attachments
+    │
+    ├──► Save message + attachments to SQLite
+    │
+    ├──► Determine target Bots:
+    │    ├── @mention present → only mentioned Bot(s)
+    │    └── no @mention → all Bots in Topic
+    │
+    ├──► Build context for each Bot:
+    │    ├── Bot's system_prompt
+    │    ├── Full message history of this Topic
+    │    ├── Images as base64 data URLs (for vision-capable Bots)
+    │    └── Files as text content injected into messages
+    │
+    ├──► Rust: parallel HTTP requests to each Bot's API
+    │    Each request streams back via SSE/chunked response
+    │
+    ├──► Frontend: render multiple Bot streams simultaneously
+    │    Each Bot gets its own message bubble, streaming in real-time
+    │
+    └──► Save all Bot responses to SQLite
+```
 
 ### Interaction Modes (Hybrid)
 
-- **Default**: All Bots in the group auto-reply to every human message
+- **Default**: All Bots in the Topic auto-reply to every human message
 - **@mention**: `@Claude what do you think about Gemini's point?` → only Claude replies
-- Bots see each other's replies in context, naturally forming different viewpoints
+- Bots see each other's replies in context, naturally forming debate
 
-### Direct Messages
+### File & Image Handling
 
-Human sends message → if recipient is Bot, call API → stream response. If recipient is human, store message only (real-time push deferred to future WebSocket implementation).
+- **Images**: Sent via OpenAI-compatible `image_url` content part (base64 encoded)
+- **Files**: Content read and injected as text in the message
+- **Vision fallback**: Non-vision Bots receive a text note "[Image attached: filename.png]" instead
+- **Storage**: Files copied to Tauri app data directory, referenced by local path
 
-## AI Provider Abstraction
+## AI Provider Integration
 
-```typescript
-interface AIProvider {
-  id: string;                    // "anthropic" | "google" | "openai"
-  name: string;
-  models: ModelInfo[];
-  chat(params: ChatParams): AsyncIterable<string>;
+All providers accessed through OpenAI-compatible chat completions API:
+
+```
+POST {base_url}/chat/completions
+Authorization: Bearer {api_key}
+Content-Type: application/json
+
+{
+  "model": "{model}",
+  "messages": [...],
+  "stream": true
 }
 ```
 
-Adding a new provider (Deepseek, Mistral, local Ollama, etc.) requires only implementing this interface.
+### Example Bot Configurations
 
-First version implements: Anthropic (Claude), Google (Gemini), OpenAI (GPT).
+```
+CLIProxyAPI (Claude):    base_url=http://localhost:8080/v1
+CLIProxyAPI (Gemini):    base_url=http://localhost:8080/v1
+OpenRouter:              base_url=https://openrouter.ai/api/v1
+Kimi (Moonshot):         base_url=https://api.moonshot.cn/v1
+MiniMax:                 base_url=https://api.minimax.chat/v1
+Deepseek:                base_url=https://api.deepseek.com/v1
+Native OpenAI:           base_url=https://api.openai.com/v1
+Local Ollama:            base_url=http://localhost:11434/v1
+```
 
-## API Key Management
-
-- **BYOK (Bring Your Own Key)**: Users configure their own API keys
-- **Platform keys**: Admin can configure global API keys
-- **Priority**: User key > Platform key
-- Keys stored encrypted in database
+Adding any new provider = just configure base_url + api_key + model. No code changes needed.
 
 ## Project Structure
 
 ```
 ai-group-chat/
-├── src/
-│   ├── app/                    # Next.js App Router pages
-│   │   ├── (auth)/             # Login/register pages
-│   │   ├── (chat)/             # Chat main interface
-│   │   └── api/                # API Routes
-│   │       ├── auth/           # Auth API
-│   │       ├── conversations/  # Conversation CRUD
-│   │       ├── messages/       # Messages + SSE streams
-│   │       └── bots/           # Bot management
-│   ├── components/             # React components
-│   │   ├── chat/               # Chat components
-│   │   ├── sidebar/            # Sidebar
-│   │   └── ui/                 # shadcn/ui components
-│   ├── lib/
-│   │   ├── ai/                 # AI Provider implementations
-│   │   │   ├── provider.ts     # Abstract interface
-│   │   │   ├── anthropic.ts    # Claude
-│   │   │   ├── google.ts       # Gemini
-│   │   │   └── openai.ts       # OpenAI
-│   │   ├── db/                 # Prisma client & schema
-│   │   └── auth/               # Auth logic
-│   └── hooks/                  # React hooks
-├── prisma/
-│   └── schema.prisma           # Database schema
-└── package.json
+├── src-tauri/                    # Rust backend
+│   ├── src/
+│   │   ├── main.rs               # Tauri app entry
+│   │   ├── commands/             # Tauri commands (IPC)
+│   │   │   ├── mod.rs
+│   │   │   ├── bot.rs            # Bot CRUD
+│   │   │   ├── topic.rs          # Topic CRUD
+│   │   │   ├── message.rs        # Message + streaming
+│   │   │   └── attachment.rs     # File/image handling
+│   │   ├── db/                   # Database layer
+│   │   │   ├── mod.rs
+│   │   │   ├── schema.rs         # Table definitions
+│   │   │   └── migrations.rs     # Schema migrations
+│   │   ├── ai/                   # AI API client
+│   │   │   ├── mod.rs
+│   │   │   ├── client.rs         # OpenAI-compatible HTTP client
+│   │   │   └── stream.rs         # SSE stream parser
+│   │   └── models.rs             # Data structures
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── src/                          # React frontend
+│   ├── App.tsx
+│   ├── main.tsx
+│   ├── components/
+│   │   ├── chat/
+│   │   │   ├── ChatView.tsx      # Main chat area
+│   │   │   ├── MessageBubble.tsx # Single message display
+│   │   │   ├── MessageInput.tsx  # Input with @mention + file upload
+│   │   │   ├── StreamingMessage.tsx # Bot streaming response
+│   │   │   └── AttachmentPreview.tsx # File/image preview
+│   │   ├── sidebar/
+│   │   │   ├── Sidebar.tsx       # Topic list
+│   │   │   └── TopicItem.tsx     # Single topic entry
+│   │   ├── bot/
+│   │   │   ├── BotManager.tsx    # Bot CRUD dialog
+│   │   │   └── BotCard.tsx       # Bot display card
+│   │   ├── topic/
+│   │   │   └── TopicSettings.tsx # Topic settings (manage bots)
+│   │   └── ui/                   # shadcn/ui components
+│   ├── hooks/
+│   │   ├── useMessages.ts        # Message state management
+│   │   └── useStreaming.ts       # Handle multiple bot streams
+│   ├── stores/
+│   │   └── appStore.ts           # Zustand global state
+│   └── lib/
+│       ├── tauri.ts              # Tauri IPC wrappers
+│       └── markdown.ts           # Markdown rendering
+├── package.json
+└── README.md
 ```
 
 ## UI Layout
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  AI Group Chat                         [User Avatar] [⚙] │
-├──────────────┬───────────────────────────────────────────┤
-│              │                                           │
-│  Conversations│  📌 Topic Title                           │
-│              │  ─────────────────────────────────────── │
-│  Direct      │                                           │
-│  ├ Claude    │  [You] Compare React and Vue              │
-│  ├ Gemini    │                                           │
-│  └ GPT       │  [Claude] React's advantage is...         │
-│              │  ████████░░ (streaming)                   │
-│  Groups      │                                           │
-│  ├ React讨论 │  [Gemini] From engineering perspective... │
-│  └ 架构评审   │  ██████████ ✓                             │
-│              │                                           │
-│  [+ Chat]    │  ┌───────────────────────────────────┐   │
-│  [+ Group]   │  │ @Claude your thoughts?     [Send] │   │
-│              │  └───────────────────────────────────┘   │
-└──────────────┴───────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  AI Group Chat                                    [Bot管理] [⚙]│
+├───────────────┬──────────────────────────────────────────────┤
+│               │                                              │
+│  Topics       │  📌 React vs Vue 讨论          [Topic设置]    │
+│               │  ────────────────────────────────────────── │
+│  ┌──────────┐ │  Bots: Claude | Gemini | GPT                │
+│  │ React讨论 │ │                                              │
+│  │ 架构评审  │ │  [You] 请比较两者优劣                         │
+│  │ 代码审查  │ │  📎 screenshot.png                           │
+│  └──────────┘ │                                              │
+│               │  [Claude] 从这张截图来看...                    │
+│               │  ████████░░ (streaming)                      │
+│               │                                              │
+│               │  [Gemini] 我同意 Claude 的部分观点，但...       │
+│               │  ██████████ ✓                                │
+│               │                                              │
+│  [+ New Topic]│  ┌────────────────────────────────────────┐  │
+│               │  │ @Claude 你怎么看？  [📎] [🖼] [发送]    │  │
+│               │  └────────────────────────────────────────┘  │
+└───────────────┴──────────────────────────────────────────────┘
 ```
 
-- Left sidebar: conversation list, separated into Direct and Groups
-- Right: chat area with simultaneous streaming from multiple Bots
-- Each message shows sender avatar/name, Bots have special badge
-- Input supports @mention autocomplete
-- Group settings to manage members (add/remove Bots)
+- Left sidebar: Topic list with create button
+- Right header: Active Bots in this Topic + Topic settings
+- Right body: Chat messages with streaming indicators
+- Input bar: @mention autocomplete + file/image upload buttons
+- Each Bot message shows Bot name with colored avatar indicator
 
-## MVP Scope
+## MVP Scope (v1)
 
-### Included in v1:
-- User registration/login (email + password)
-- Bot management: create/edit/delete (provider + model + system prompt)
-- API Key management: user configures own keys (encrypted storage)
-- Direct messages: private chat with Bot or human
-- Group creation: set title, invite multiple Bots
+### Included:
+- Bot management: create/edit/delete (base_url + api_key + model + system_prompt)
+- Topic creation with Bot selection
 - Group chat: all Bots reply in parallel with streaming
 - @mention: target specific Bot for reply
+- File upload: attach files as text context
+- Image upload: send images to vision-capable models
 - Markdown rendering with code highlighting
+- Full conversation history as shared context
+- Local SQLite storage — no server, no account
 
 ### Deferred to future versions:
-- Real-time push between humans (requires WebSocket)
-- File/image upload
-- Conversation export
-- Autonomous Bot-to-Bot debate (without human trigger)
-- Multi-language support
-- Mobile responsive design
+- One-on-one direct chat with individual Bots
+- Conversation export (markdown, JSON)
+- Autonomous Bot-to-Bot debate rounds (without human trigger each time)
+- Bot presets / templates (quick-add popular providers)
+- Theme customization
+- Keyboard shortcuts
