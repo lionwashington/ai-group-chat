@@ -58,3 +58,31 @@ pub struct TopicSummary {
     pub bot_count: usize,
     pub last_message_preview: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Attachment {
+    pub id: String,
+    pub message_id: String,
+    pub file_name: String,
+    pub file_path: String,
+    pub file_type: String, // "image" | "file"
+    pub mime_type: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Message {
+    pub id: String,
+    pub topic_id: String,
+    pub sender_type: String, // "human" | "bot"
+    pub sender_bot_id: Option<String>,
+    pub content: String,
+    pub created_at: String,
+    pub attachments: Vec<Attachment>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendMessageRequest {
+    pub topic_id: String,
+    pub content: String,
+}
