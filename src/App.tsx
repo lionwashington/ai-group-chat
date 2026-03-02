@@ -1,50 +1,117 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect, useState, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useAppStore } from "./stores/appStore";
+import { listBots, listTopics, type StreamEvent } from "./lib/tauri";
+import { Sidebar } from "./components/sidebar/Sidebar";
+import { BotManager } from "./components/bot/BotManager";
+import { CreateTopicDialog } from "./components/topic/CreateTopicDialog";
+import { ChatView } from "./components/chat/ChatView";
+import { createTopic } from "./lib/tauri";
+import { MessageSquare } from "lucide-react";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const setBots = useAppStore((s) => s.setBots);
+  const setTopics = useAppStore((s) => s.setTopics);
+  const activeTopicId = useAppStore((s) => s.activeTopicId);
+  const setActiveTopicId = useAppStore((s) => s.setActiveTopicId);
+  const handleStreamEvent = useAppStore((s) => s.handleStreamEvent);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const [botManagerOpen, setBotManagerOpen] = useState(false);
+  const [createTopicOpen, setCreateTopicOpen] = useState(false);
+
+  // Load bots and topics on mount
+  const loadBots = useCallback(async () => {
+    try {
+      const bots = await listBots();
+      setBots(bots);
+    } catch (err) {
+      console.error("Failed to load bots:", err);
+    }
+  }, [setBots]);
+
+  const loadTopics = useCallback(async () => {
+    try {
+      const topics = await listTopics();
+      setTopics(topics);
+    } catch (err) {
+      console.error("Failed to load topics:", err);
+    }
+  }, [setTopics]);
+
+  useEffect(() => {
+    loadBots();
+    loadTopics();
+  }, [loadBots, loadTopics]);
+
+  // Listen for chat-stream events
+  useEffect(() => {
+    const unlisten = listen<StreamEvent>("chat-stream", (event) => {
+      handleStreamEvent(event.payload);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [handleStreamEvent]);
+
+  // Handle topic creation
+  const handleCreateTopic = async (title: string, botIds: string[]) => {
+    try {
+      const topic = await createTopic({ title, bot_ids: botIds });
+      setCreateTopicOpen(false);
+      await loadTopics();
+      setActiveTopicId(topic.id);
+    } catch (err) {
+      console.error("Failed to create topic:", err);
+    }
+  };
+
+  // Handle bot changes (reload bots)
+  const handleBotsChanged = () => {
+    loadBots();
+  };
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="flex h-full">
+      {/* Sidebar */}
+      <Sidebar
+        onNewTopic={() => setCreateTopicOpen(true)}
+        onManageBots={() => setBotManagerOpen(true)}
+      />
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+      {/* Main content */}
+      <div className="flex-1">
+        {activeTopicId ? (
+          <ChatView />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+            <MessageSquare className="h-16 w-16 opacity-20" />
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-foreground">
+                Select or create a topic
+              </h2>
+              <p className="mt-1 text-sm">
+                Choose a topic from the sidebar or create a new one to start
+                chatting.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      {/* Dialogs */}
+      <BotManager
+        open={botManagerOpen}
+        onOpenChange={setBotManagerOpen}
+        onBotsChanged={handleBotsChanged}
+      />
+
+      <CreateTopicDialog
+        open={createTopicOpen}
+        onOpenChange={setCreateTopicOpen}
+        onSubmit={handleCreateTopic}
+      />
+    </div>
   );
 }
 
