@@ -1,3 +1,4 @@
+mod ai;
 mod commands;
 mod db;
 mod models;
@@ -38,6 +39,7 @@ pub fn run() {
             commands::message::save_bot_message,
             commands::attachment::save_attachment,
             commands::attachment::read_attachment_base64,
+            commands::chat::chat_with_bots,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
