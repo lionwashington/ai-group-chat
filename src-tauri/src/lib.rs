@@ -28,6 +28,11 @@ pub fn run() {
             commands::bot::create_bot,
             commands::bot::update_bot,
             commands::bot::delete_bot,
+            commands::topic::list_topics,
+            commands::topic::get_topic,
+            commands::topic::create_topic,
+            commands::topic::update_topic_bots,
+            commands::topic::delete_topic,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
