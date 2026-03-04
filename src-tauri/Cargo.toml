@@ -38,5 +38,6 @@ http = "1"
 bytes = "1"
 regex = "1"
 html2text = "0.16"
+[target.'cfg(not(target_os = "android"))'.dependencies]
 tauri-plugin-webdriver-automation = "0.1.3"
 

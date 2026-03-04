@@ -20,7 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init());
 
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, not(target_os = "android")))]
     {
         builder = builder.plugin(tauri_plugin_webdriver_automation::init());
     }
