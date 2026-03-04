@@ -6,11 +6,11 @@
 
 | Layer | Framework | Tests | Status |
 |-------|-----------|-------|--------|
-| Rust unit tests | built-in `#[test]` | 76 | All passing |
+| Rust unit tests | built-in `#[test]` | 79 | All passing |
 | Frontend unit tests | Vitest + React Testing Library | 56 | All passing |
 | E2E tests | WebdriverIO | 8 | Deferred |
 
-**Total: 132 automated tests** (76 Rust + 56 Frontend)
+**Total: 135 automated tests** (79 Rust + 56 Frontend)
 
 ## 2. Running Tests
 
@@ -92,7 +92,7 @@ fn setup_test_db() -> Connection {
 | UT-BOT-09 | `test_create_bot_empty_name_fails` | Validation: name required |
 | UT-BOT-10 | `test_create_bot_empty_base_url_fails` | Validation: base_url required |
 
-### 4.3 Topic Commands — 10 tests
+### 4.3 Topic Commands — 13 tests
 
 | ID | Test | Validates |
 |----|------|-----------|
@@ -106,6 +106,9 @@ fn setup_test_db() -> Connection {
 | UT-TOPIC-08 | `test_delete_topic_cascades_to_messages` | CASCADE to messages |
 | UT-TOPIC-09 | `test_topic_summary_last_message_preview` | Preview from latest message |
 | UT-TOPIC-10 | `test_topic_summary_bot_count` | Correct bot count in summary |
+| UT-TOPIC-11 | `test_rename_topic` | Title updated, updated_at refreshed |
+| UT-TOPIC-12 | `test_rename_topic_trims_whitespace` | Whitespace trimmed from title |
+| UT-TOPIC-13 | `test_rename_topic_empty_title_fails` | Empty/blank title rejected |
 
 ### 4.4 Message Commands — 6 tests
 
@@ -305,7 +308,7 @@ fn setup_test_db() -> Connection {
 | Feature | Rust Tests | Frontend Tests | Coverage |
 |---------|-----------|---------------|----------|
 | Bot CRUD | 10 | 6 | Full |
-| Topic CRUD | 10 | 5 | Full |
+| Topic CRUD | 13 | 5 | Full |
 | Messages | 6 | 5 | Full |
 | Attachments | 6 | 1 | Backend: full, Frontend: basic |
 | Chat/AI orchestration | 12 | 2 | Backend: full, Frontend: streaming only |

@@ -205,7 +205,7 @@ This pattern enables comprehensive unit testing without the Tauri runtime.
 | Module | Commands | Purpose |
 |--------|----------|---------|
 | `bot` | `list_bots`, `create_bot`, `update_bot`, `delete_bot` | Bot CRUD |
-| `topic` | `list_topics`, `get_topic`, `create_topic`, `update_topic_bots`, `delete_topic` | Topic CRUD |
+| `topic` | `list_topics`, `get_topic`, `create_topic`, `update_topic_bots`, `rename_topic`, `delete_topic` | Topic CRUD |
 | `message` | `list_messages`, `send_human_message`, `save_bot_message` | Message storage |
 | `attachment` | `save_attachment`, `read_attachment_base64` | File handling |
 | `chat` | `chat_with_bots` | AI orchestration |
@@ -334,7 +334,7 @@ Rust: app.emit("chat-stream", StreamEvent)
 ```
 App
 ├── Sidebar
-│   ├── Topic list (click to select, hover for delete)
+│   ├── Topic list (click to select, double-click to rename, hover for delete)
 │   └── Actions: New Topic, Import Topic, Manage Bots
 ├── Resize Handle (drag 200-500px)
 ├── ChatView (or empty state)

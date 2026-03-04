@@ -26,6 +26,8 @@ interface AppState {
   setActiveTopicId: (id: string | null) => void;
   activeTopic: Topic | null;
   setActiveTopic: (topic: Topic | null) => void;
+  botsPopoverRequested: boolean;
+  setBotsPopoverRequested: (v: boolean) => void;
 
   // Messages
   messages: Message[];
@@ -58,6 +60,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveTopicId: (id) => set({ activeTopicId: id }),
   activeTopic: null,
   setActiveTopic: (topic) => set({ activeTopic: topic }),
+  botsPopoverRequested: false,
+  setBotsPopoverRequested: (v) => set({ botsPopoverRequested: v }),
 
   // -- Messages --
   messages: [],

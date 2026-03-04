@@ -1,8 +1,9 @@
-import { useEffect, useRef, useCallback, useMemo } from "react";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Download } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Download, Pencil, Check } from "lucide-react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import {
@@ -12,6 +13,8 @@ import {
   chatWithBots,
   getTopic,
   exportTopic,
+  updateTopicBots,
+  type Bot,
 } from "@/lib/tauri";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingMessage } from "./StreamingMessage";
@@ -26,41 +29,59 @@ export function ChatView() {
   const streamingStates = useAppStore((s) => s.streamingStates);
   const clearStreaming = useAppStore((s) => s.clearStreaming);
   const isAnyBotStreaming = useAppStore((s) => s.isAnyBotStreaming);
+  const allBots = useAppStore((s) => s.bots);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevStreamingRef = useRef(false);
-  // true = auto-scroll enabled; false = user is reading history
-  const shouldAutoScrollRef = useRef(true);
+  // Set to true after user sends a message to force scroll to bottom
+  const forceScrollRef = useRef(true);
 
-  // Detect user-initiated scrolls via wheel/touch — these never fire from programmatic scrolls
+  const botsPopoverRequested = useAppStore((s) => s.botsPopoverRequested);
+  const setBotsPopoverRequested = useAppStore((s) => s.setBotsPopoverRequested);
+
+  const [botsPopoverOpen, setBotsPopoverOpen] = useState(false);
+  const [selectedBotIds, setSelectedBotIds] = useState<Set<string>>(new Set());
+
+  // Sync selectedBotIds when popover opens
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY < 0) {
-        // Scrolling UP — immediately disable auto-scroll (no async delay)
-        shouldAutoScrollRef.current = false;
-      } else if (e.deltaY > 0) {
-        // Scrolling DOWN — re-enable if user reaches the bottom
-        requestAnimationFrame(() => {
-          const threshold = 80;
-          if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
-            shouldAutoScrollRef.current = true;
-          }
-        });
+    if (botsPopoverOpen && activeTopic) {
+      setSelectedBotIds(new Set(activeTopic.bots.map((b) => b.id)));
+    }
+  }, [botsPopoverOpen, activeTopic]);
+
+  // Open bots popover when requested from sidebar context menu
+  useEffect(() => {
+    if (botsPopoverRequested && activeTopic) {
+      setBotsPopoverOpen(true);
+      setBotsPopoverRequested(false);
+    }
+  }, [botsPopoverRequested, activeTopic, setBotsPopoverRequested]);
+
+  const handleToggleBot = (botId: string) => {
+    setSelectedBotIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(botId)) {
+        next.delete(botId);
+      } else {
+        next.add(botId);
       }
-    };
-    const onTouchMove = () => {
-      // On touch, conservatively disable auto-scroll; re-enabled on next send
-      shouldAutoScrollRef.current = false;
-    };
-    el.addEventListener("wheel", onWheel, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: true });
-    return () => {
-      el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("touchmove", onTouchMove);
-    };
-  }, []);
+      return next;
+    });
+  };
+
+  const handleSaveBots = async () => {
+    if (!activeTopicId) return;
+    try {
+      const updated = await updateTopicBots(activeTopicId, Array.from(selectedBotIds));
+      setActiveTopic(updated);
+      setBotsPopoverOpen(false);
+    } catch (err) {
+      console.error("Failed to update topic bots:", err);
+    }
+  };
+
+  // No scroll event listener needed. Auto-scroll is determined by checking
+  // the current scroll position directly before each scroll decision.
 
   // Load topic and messages when activeTopicId changes
   useEffect(() => {
@@ -87,10 +108,20 @@ export function ChatView() {
     clearStreaming();
   }, [activeTopicId, setActiveTopic, setMessages, clearStreaming]);
 
-  // Auto-scroll to bottom only when user hasn't scrolled up
+  // Auto-scroll: scroll to bottom only if already near the bottom (or forced after send).
+  // No scroll event listeners needed — just check position directly each time.
+  // If user scrolled up, distFromBottom is large → no scroll.
+  // If user is near bottom, distFromBottom is small → scroll to keep up.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && shouldAutoScrollRef.current) {
+    if (!el) return;
+    if (forceScrollRef.current) {
+      el.scrollTop = el.scrollHeight;
+      forceScrollRef.current = false;
+      return;
+    }
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distFromBottom < 80) {
       el.scrollTop = el.scrollHeight;
     }
   }, [messages, streamingStates]);
@@ -145,8 +176,8 @@ export function ChatView() {
         const msgs = await listMessages(activeTopicId);
         setMessages(msgs);
 
-        // 4. Re-enable auto-scroll — user wants to see bot responses
-        shouldAutoScrollRef.current = true;
+        // 4. Force scroll to bottom — user wants to see bot responses
+        forceScrollRef.current = true;
 
         // 5. Clear previous streaming and call chatWithBots
         clearStreaming();
@@ -203,7 +234,7 @@ export function ChatView() {
       {/* Header */}
       <div className="flex items-center gap-3 border-b px-4 py-3">
         <h2 className="text-lg font-semibold">{activeTopic.title}</h2>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {activeTopic.bots.map((bot) => (
             <Badge
               key={bot.id}
@@ -218,7 +249,48 @@ export function ChatView() {
             </Badge>
           ))}
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <Popover open={botsPopoverOpen} onOpenChange={setBotsPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" title="Edit bots">
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0" align="end">
+              <div className="border-b px-3 py-2">
+                <p className="text-sm font-medium">Manage Bots</p>
+              </div>
+              <div className="max-h-60 overflow-y-auto p-1">
+                {allBots.map((bot: Bot) => {
+                  const selected = selectedBotIds.has(bot.id);
+                  return (
+                    <button
+                      key={bot.id}
+                      onClick={() => handleToggleBot(bot.id)}
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    >
+                      <span
+                        className="inline-block h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: bot.avatar_color }}
+                      />
+                      <span className="flex-1 truncate text-left">{bot.name}</span>
+                      {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                    </button>
+                  );
+                })}
+                {allBots.length === 0 && (
+                  <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                    No bots available
+                  </p>
+                )}
+              </div>
+              <div className="border-t p-2">
+                <Button size="sm" className="w-full" onClick={handleSaveBots}>
+                  Save
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="ghost" size="icon" onClick={handleExport} title="Export topic">
             <Download className="h-4 w-4" />
           </Button>

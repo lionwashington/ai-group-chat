@@ -98,6 +98,9 @@ export const createTopic = (req: { title: string; bot_ids: string[] }) =>
 export const updateTopicBots = (topicId: string, botIds: string[]) =>
   invoke<Topic>("update_topic_bots", { topicId, botIds });
 
+export const renameTopic = (id: string, title: string) =>
+  invoke<Topic>("rename_topic", { id, title });
+
 export const deleteTopic = (id: string) => invoke<void>("delete_topic", { id });
 
 // ---------------------------------------------------------------------------

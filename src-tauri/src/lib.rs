@@ -41,6 +41,7 @@ pub fn run() {
             commands::topic::get_topic,
             commands::topic::create_topic,
             commands::topic::update_topic_bots,
+            commands::topic::rename_topic,
             commands::topic::delete_topic,
             commands::message::list_messages,
             commands::message::send_human_message,

@@ -145,6 +145,19 @@ pub fn db_update_topic_bots(
     db_get_topic(conn, topic_id)
 }
 
+pub fn db_rename_topic(conn: &Connection, id: &str, title: &str) -> Result<Topic, String> {
+    if title.trim().is_empty() {
+        return Err("Topic title cannot be empty".to_string());
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE topics SET title = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![title.trim(), now, id],
+    )
+    .map_err(|e| e.to_string())?;
+    db_get_topic(conn, id)
+}
+
 pub fn db_delete_topic(conn: &Connection, id: &str) -> Result<(), String> {
     conn.execute("DELETE FROM topics WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
@@ -181,6 +194,12 @@ pub fn update_topic_bots(
 ) -> Result<Topic, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db_update_topic_bots(&conn, &topic_id, bot_ids)
+}
+
+#[tauri::command]
+pub fn rename_topic(db: State<DbState>, id: String, title: String) -> Result<Topic, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db_rename_topic(&conn, &id, &title)
 }
 
 #[tauri::command]
@@ -522,5 +541,68 @@ mod tests {
         // Find the empty one (most recently updated should be first)
         let empty_topic = topics.iter().find(|t| t.title == "Empty Bot Topic").unwrap();
         assert_eq!(empty_topic.bot_count, 0);
+    }
+
+    /// UT-TOPIC-11: Rename topic updates title and updated_at
+    #[test]
+    fn test_rename_topic() {
+        let conn = setup_test_db();
+
+        let topic = db_create_topic(
+            &conn,
+            CreateTopicRequest {
+                title: "Original Title".to_string(),
+                bot_ids: vec![],
+            },
+        )
+        .unwrap();
+
+        let renamed = db_rename_topic(&conn, &topic.id, "New Title").unwrap();
+        assert_eq!(renamed.title, "New Title");
+        assert!(renamed.updated_at >= topic.updated_at);
+
+        // Verify persisted
+        let fetched = db_get_topic(&conn, &topic.id).unwrap();
+        assert_eq!(fetched.title, "New Title");
+    }
+
+    /// UT-TOPIC-12: Rename topic trims whitespace
+    #[test]
+    fn test_rename_topic_trims_whitespace() {
+        let conn = setup_test_db();
+
+        let topic = db_create_topic(
+            &conn,
+            CreateTopicRequest {
+                title: "Original".to_string(),
+                bot_ids: vec![],
+            },
+        )
+        .unwrap();
+
+        let renamed = db_rename_topic(&conn, &topic.id, "  Trimmed Title  ").unwrap();
+        assert_eq!(renamed.title, "Trimmed Title");
+    }
+
+    /// UT-TOPIC-13: Rename topic with empty title fails
+    #[test]
+    fn test_rename_topic_empty_title_fails() {
+        let conn = setup_test_db();
+
+        let topic = db_create_topic(
+            &conn,
+            CreateTopicRequest {
+                title: "Original".to_string(),
+                bot_ids: vec![],
+            },
+        )
+        .unwrap();
+
+        let result = db_rename_topic(&conn, &topic.id, "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cannot be empty"));
+
+        let result = db_rename_topic(&conn, &topic.id, "   ");
+        assert!(result.is_err());
     }
 }

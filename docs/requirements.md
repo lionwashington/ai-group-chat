@@ -32,7 +32,8 @@ AI Group Chat is a desktop application that enables humans to chat with multiple
 | REQ-TOPIC-02 | List topics ordered by last activity (updated_at DESC) | Done |
 | REQ-TOPIC-03 | Show topic summary: title, bot count, last message preview | Done |
 | REQ-TOPIC-04 | Delete topics with confirmation dialog (cascades to all messages and attachments) | Done |
-| REQ-TOPIC-05 | Update topic's bot associations (add/remove bots from active topic) | Done |
+| REQ-TOPIC-05 | Edit topic bots: add/remove bots via popover in chat header (Pencil icon, checkboxes, Save) | Done |
+| REQ-TOPIC-06 | Rename topic title (double-click in sidebar, inline editing with Enter/Escape/blur) | Done |
 
 ### 2.3 Messaging
 

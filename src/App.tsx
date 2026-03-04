@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "./stores/appStore";
-import { listBots, listTopics, deleteTopic, importTopic, type StreamEvent } from "./lib/tauri";
+import { listBots, listTopics, deleteTopic, importTopic, renameTopic, getTopic, exportTopic, type StreamEvent } from "./lib/tauri";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { BotManager } from "./components/bot/BotManager";
 import { CreateTopicDialog } from "./components/topic/CreateTopicDialog";
 import { ChatView } from "./components/chat/ChatView";
 import { createTopic } from "./lib/tauri";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { MessageSquare } from "lucide-react";
 
 function App() {
@@ -15,7 +15,9 @@ function App() {
   const setTopics = useAppStore((s) => s.setTopics);
   const activeTopicId = useAppStore((s) => s.activeTopicId);
   const setActiveTopicId = useAppStore((s) => s.setActiveTopicId);
+  const setBotsPopoverRequested = useAppStore((s) => s.setBotsPopoverRequested);
   const handleStreamEvent = useAppStore((s) => s.handleStreamEvent);
+  const topics = useAppStore((s) => s.topics);
 
   const [botManagerOpen, setBotManagerOpen] = useState(false);
   const [createTopicOpen, setCreateTopicOpen] = useState(false);
@@ -99,6 +101,44 @@ function App() {
     }
   };
 
+  // Handle topic rename
+  const setActiveTopic = useAppStore((s) => s.setActiveTopic);
+  const handleRenameTopic = async (id: string, title: string) => {
+    try {
+      await renameTopic(id, title);
+      await loadTopics();
+      if (activeTopicId === id) {
+        const updated = await getTopic(id);
+        setActiveTopic(updated);
+      }
+    } catch (err) {
+      console.error("Failed to rename topic:", err);
+    }
+  };
+
+  // Handle "Update Bots" from sidebar context menu
+  const handleUpdateBots = (id: string) => {
+    setActiveTopicId(id);
+    setBotsPopoverRequested(true);
+  };
+
+  // Handle "Export Topic" from sidebar context menu
+  const handleExportTopicFromSidebar = async (id: string) => {
+    try {
+      const topic = topics.find((t) => t.id === id);
+      const defaultName = (topic?.title ?? "topic").replace(/[^a-zA-Z0-9]/g, "_");
+      const filePath = await save({
+        defaultPath: `${defaultName}.aigc.json`,
+        filters: [{ name: "AI Group Chat Export", extensions: ["aigc.json"] }],
+      });
+      if (filePath) {
+        await exportTopic(id, filePath);
+      }
+    } catch (err) {
+      console.error("Failed to export topic:", err);
+    }
+  };
+
   // Sidebar resize drag
   const handleMouseDown = useCallback(() => {
     isDragging.current = true;
@@ -137,6 +177,9 @@ function App() {
           onManageBots={() => setBotManagerOpen(true)}
           onDeleteTopic={handleDeleteTopic}
           onImportTopic={handleImportTopic}
+          onRenameTopic={handleRenameTopic}
+          onUpdateBots={handleUpdateBots}
+          onExportTopic={handleExportTopicFromSidebar}
         />
       </div>
 

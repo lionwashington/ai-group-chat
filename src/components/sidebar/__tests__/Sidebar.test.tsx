@@ -17,6 +17,9 @@ describe("Sidebar", () => {
     onManageBots: vi.fn(),
     onDeleteTopic: vi.fn(),
     onImportTopic: vi.fn(),
+    onRenameTopic: vi.fn(),
+    onUpdateBots: vi.fn(),
+    onExportTopic: vi.fn(),
   };
 
   // UT-COMP-01: Sidebar renders topic list
@@ -57,11 +60,12 @@ describe("Sidebar", () => {
 
     render(<Sidebar {...defaultProps} />);
 
-    const activeButton = screen.getByText("Active Topic").closest("button");
-    const inactiveButton = screen.getByText("Inactive Topic").closest("button");
+    // bg-accent is on the wrapper div, not the button itself
+    const activeDiv = screen.getByText("Active Topic").closest("button")?.parentElement;
+    const inactiveDiv = screen.getByText("Inactive Topic").closest("button")?.parentElement;
 
-    expect(activeButton?.className).toContain("bg-accent");
-    expect(inactiveButton?.className).not.toContain("bg-accent text-accent-foreground");
+    expect(activeDiv?.className).toContain("bg-accent");
+    expect(inactiveDiv?.className).not.toContain("bg-accent text-accent-foreground");
   });
 
   it("clicking a topic calls setActiveTopicId", async () => {
@@ -82,7 +86,7 @@ describe("Sidebar", () => {
     const onNewTopic = vi.fn();
     const onManageBots = vi.fn();
 
-    render(<Sidebar onNewTopic={onNewTopic} onManageBots={onManageBots} onDeleteTopic={vi.fn()} onImportTopic={vi.fn()} />);
+    render(<Sidebar onNewTopic={onNewTopic} onManageBots={onManageBots} onDeleteTopic={vi.fn()} onImportTopic={vi.fn()} onRenameTopic={vi.fn()} onUpdateBots={vi.fn()} onExportTopic={vi.fn()} />);
 
     await user.click(screen.getByText("New Topic"));
     expect(onNewTopic).toHaveBeenCalledOnce();
