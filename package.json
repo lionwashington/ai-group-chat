@@ -1,7 +1,15 @@
 {
   "name": "ai-group-chat",
-  "private": true,
   "version": "0.1.0",
+  "description": "Desktop app for multi-AI group conversations — chat with Claude, Gemini, GPT and more simultaneously",
+  "author": "AI Group Chat Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lionwashington/ai-group-chat.git"
+  },
+  "homepage": "https://github.com/lionwashington/ai-group-chat",
+  "keywords": ["ai", "chat", "multi-model", "desktop", "tauri", "claude", "gemini", "gpt", "local-first"],
   "type": "module",
   "scripts": {
     "dev": "vite",
