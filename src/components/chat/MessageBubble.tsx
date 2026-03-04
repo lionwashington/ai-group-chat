@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -10,7 +11,7 @@ interface MessageBubbleProps {
   bots: Bot[];
 }
 
-export function MessageBubble({ message, bots }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, bots }: MessageBubbleProps) {
   const isHuman = message.sender_type === "human";
   const senderBot = message.sender_bot_id
     ? bots.find((b) => b.id === message.sender_bot_id)
@@ -88,4 +89,4 @@ export function MessageBubble({ message, bots }: MessageBubbleProps) {
       )}
     </div>
   );
-}
+});

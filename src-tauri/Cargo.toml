@@ -35,4 +35,7 @@ base64 = "0.22"
 futures = "0.3"
 http = "1"
 bytes = "1"
+regex = "1"
+html2text = "0.16"
+tauri-plugin-webdriver-automation = "0.1.3"
 

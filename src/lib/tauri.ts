@@ -60,6 +60,7 @@ export interface StreamEvent {
   done: boolean;
   error: string | null;
   message_id: string | null;
+  status: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,3 +127,13 @@ export const saveAttachment = (
 
 export const chatWithBots = (req: { topic_id: string; bot_ids?: string[] }) =>
   invoke<void>("chat_with_bots", { req });
+
+// ---------------------------------------------------------------------------
+// Import/Export commands
+// ---------------------------------------------------------------------------
+
+export const exportTopic = (topicId: string, filePath: string) =>
+  invoke<void>("export_topic", { topicId, filePath });
+
+export const importTopic = (filePath: string) =>
+  invoke<string>("import_topic", { filePath });

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Download } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import {
   listMessages,
@@ -9,6 +11,7 @@ import {
   saveAttachment,
   chatWithBots,
   getTopic,
+  exportTopic,
 } from "@/lib/tauri";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingMessage } from "./StreamingMessage";
@@ -26,6 +29,38 @@ export function ChatView() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevStreamingRef = useRef(false);
+  // true = auto-scroll enabled; false = user is reading history
+  const shouldAutoScrollRef = useRef(true);
+
+  // Detect user-initiated scrolls via wheel/touch — these never fire from programmatic scrolls
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) {
+        // Scrolling UP — immediately disable auto-scroll (no async delay)
+        shouldAutoScrollRef.current = false;
+      } else if (e.deltaY > 0) {
+        // Scrolling DOWN — re-enable if user reaches the bottom
+        requestAnimationFrame(() => {
+          const threshold = 80;
+          if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+            shouldAutoScrollRef.current = true;
+          }
+        });
+      }
+    };
+    const onTouchMove = () => {
+      // On touch, conservatively disable auto-scroll; re-enabled on next send
+      shouldAutoScrollRef.current = false;
+    };
+    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchmove", onTouchMove);
+    };
+  }, []);
 
   // Load topic and messages when activeTopicId changes
   useEffect(() => {
@@ -52,10 +87,10 @@ export function ChatView() {
     clearStreaming();
   }, [activeTopicId, setActiveTopic, setMessages, clearStreaming]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom only when user hasn't scrolled up
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) {
+    if (el && shouldAutoScrollRef.current) {
       el.scrollTop = el.scrollHeight;
     }
   }, [messages, streamingStates]);
@@ -110,14 +145,49 @@ export function ChatView() {
         const msgs = await listMessages(activeTopicId);
         setMessages(msgs);
 
-        // 4. Clear previous streaming and call chatWithBots
+        // 4. Re-enable auto-scroll — user wants to see bot responses
+        shouldAutoScrollRef.current = true;
+
+        // 5. Clear previous streaming and call chatWithBots
         clearStreaming();
-        await chatWithBots({ topic_id: activeTopicId });
+
+        // Extract @mentioned bot names — if any, only those bots respond
+        const mentionedBotIds = activeTopic?.bots
+          .filter((bot) => content.includes(`@${bot.name}`))
+          .map((bot) => bot.id);
+
+        await chatWithBots({
+          topic_id: activeTopicId,
+          bot_ids: mentionedBotIds && mentionedBotIds.length > 0
+            ? mentionedBotIds
+            : undefined,
+        });
       } catch (err) {
         console.error("Failed to send message:", err);
       }
     },
-    [activeTopicId, setMessages, clearStreaming],
+    [activeTopicId, activeTopic, setMessages, clearStreaming],
+  );
+
+  const handleExport = useCallback(async () => {
+    if (!activeTopicId || !activeTopic) return;
+    try {
+      const filePath = await save({
+        defaultPath: `${activeTopic.title.replace(/[^a-zA-Z0-9]/g, "_")}.aigc.json`,
+        filters: [{ name: "AI Group Chat Export", extensions: ["aigc.json"] }],
+      });
+      if (filePath) {
+        await exportTopic(activeTopicId, filePath);
+      }
+    } catch (err) {
+      console.error("Failed to export topic:", err);
+    }
+  }, [activeTopicId, activeTopic]);
+
+  // Memoize bots array so MessageBubble/StreamingMessage memo works
+  const topicBots = useMemo(
+    () => activeTopic?.bots ?? [],
+    [activeTopic?.bots],
   );
 
   if (!activeTopic) {
@@ -148,11 +218,16 @@ export function ChatView() {
             </Badge>
           ))}
         </div>
+        <div className="ml-auto">
+          <Button variant="ghost" size="icon" onClick={handleExport} title="Export topic">
+            <Download className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1">
-        <div ref={scrollRef} className="space-y-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]" ref={scrollRef}>
+        <div className="space-y-4 py-4">
           {messages.length === 0 && streamingArray.length === 0 ? (
             <p className="px-4 py-12 text-center text-sm text-muted-foreground">
               No messages yet. Start the conversation!
@@ -163,7 +238,7 @@ export function ChatView() {
                 <MessageBubble
                   key={msg.id}
                   message={msg}
-                  bots={activeTopic.bots}
+                  bots={topicBots}
                 />
               ))}
 
@@ -174,7 +249,7 @@ export function ChatView() {
                     <StreamingMessage
                       key={state.botId}
                       state={state}
-                      bots={activeTopic.bots}
+                      bots={topicBots}
                     />
                   ))}
                 </>
@@ -182,7 +257,7 @@ export function ChatView() {
             </>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <MessageInput

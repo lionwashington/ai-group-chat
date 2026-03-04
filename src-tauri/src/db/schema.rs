@@ -1,5 +1,74 @@
 use rusqlite::Connection;
 
+pub fn seed_default_bots(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let count: i32 = conn.query_row("SELECT COUNT(*) FROM bots", [], |row| row.get(0))?;
+    if count > 0 {
+        return Ok(());
+    }
+
+    conn.execute(
+        "INSERT INTO bots (id, name, avatar_color, base_url, api_key, model, system_prompt, supports_vision)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            uuid::Uuid::new_v4().to_string(),
+            "Claude Sonnet 4",
+            "#8b5cf6",
+            "http://127.0.0.1:8317/v1",
+            "your-api-key-1",
+            "claude-sonnet-4-20250514",
+            "You are Claude Sonnet 4, a helpful AI assistant by Anthropic.",
+            1,
+        ],
+    )?;
+
+    conn.execute(
+        "INSERT INTO bots (id, name, avatar_color, base_url, api_key, model, system_prompt, supports_vision)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            uuid::Uuid::new_v4().to_string(),
+            "Claude Opus 4.6",
+            "#6366f1",
+            "http://127.0.0.1:8317/v1",
+            "your-api-key-1",
+            "claude-opus-4-6",
+            "You are Claude Opus 4.6, the most capable AI assistant by Anthropic.",
+            1,
+        ],
+    )?;
+
+    conn.execute(
+        "INSERT INTO bots (id, name, avatar_color, base_url, api_key, model, system_prompt, supports_vision)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            uuid::Uuid::new_v4().to_string(),
+            "Gemini 2.5 Pro",
+            "#10b981",
+            "http://127.0.0.1:8317/v1",
+            "your-api-key-1",
+            "gemini-2.5-pro",
+            "You are Gemini 2.5 Pro, a helpful AI assistant by Google.",
+            1,
+        ],
+    )?;
+
+    conn.execute(
+        "INSERT INTO bots (id, name, avatar_color, base_url, api_key, model, system_prompt, supports_vision)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            uuid::Uuid::new_v4().to_string(),
+            "Gemini 3.1 Pro",
+            "#f97316",
+            "http://127.0.0.1:8317/v1",
+            "your-api-key-1",
+            "gemini-3.1-pro-preview",
+            "You are Gemini 3.1 Pro, a helpful AI assistant by Google.",
+            1,
+        ],
+    )?;
+
+    Ok(())
+}
+
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "

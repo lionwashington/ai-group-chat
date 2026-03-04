@@ -13,5 +13,6 @@ pub fn init_db(app: &tauri::App) -> Result<Connection, Box<dyn std::error::Error
     let conn = Connection::open(db_path)?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
     schema::run_migrations(&conn)?;
+    schema::seed_default_bots(&conn)?;
     Ok(conn)
 }

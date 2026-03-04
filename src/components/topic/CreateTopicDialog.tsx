@@ -93,7 +93,7 @@ export function CreateTopicDialog({
                 No bots available. Add a bot first.
               </p>
             ) : (
-              <ScrollArea className="mt-1.5 max-h-[200px]">
+              <ScrollArea className="mt-1.5 max-h-[300px]">
                 <div className="space-y-1 pr-3">
                   {bots.map((bot) => (
                     <label

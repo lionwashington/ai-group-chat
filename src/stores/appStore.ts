@@ -7,6 +7,8 @@ export interface StreamingState {
   content: string;
   done: boolean;
   error: string | null;
+  status: string | null;
+  retryInfo: string | null;
 }
 
 interface AppState {
@@ -73,6 +75,24 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set((state) => {
       const existing = state.streamingStates[event.bot_id];
+      if (event.status === "retrying") {
+        // Store retry info separately, don't append to content
+        return {
+          streamingStates: {
+            ...state.streamingStates,
+            [event.bot_id]: {
+              botId: event.bot_id,
+              botName: event.bot_name,
+              content: existing?.content ?? "",
+              done: event.done,
+              error: event.error,
+              status: event.status,
+              retryInfo: event.delta,
+            },
+          },
+        };
+      }
+      // Normal: append delta to content, clear retryInfo
       return {
         streamingStates: {
           ...state.streamingStates,
@@ -82,6 +102,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             content: (existing?.content ?? "") + event.delta,
             done: event.done,
             error: event.error,
+            status: event.status,
+            retryInfo: null,
           },
         },
       };

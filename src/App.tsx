@@ -1,12 +1,13 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "./stores/appStore";
-import { listBots, listTopics, type StreamEvent } from "./lib/tauri";
+import { listBots, listTopics, deleteTopic, importTopic, type StreamEvent } from "./lib/tauri";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { BotManager } from "./components/bot/BotManager";
 import { CreateTopicDialog } from "./components/topic/CreateTopicDialog";
 import { ChatView } from "./components/chat/ChatView";
 import { createTopic } from "./lib/tauri";
+import { open } from "@tauri-apps/plugin-dialog";
 import { MessageSquare } from "lucide-react";
 
 function App() {
@@ -18,6 +19,8 @@ function App() {
 
   const [botManagerOpen, setBotManagerOpen] = useState(false);
   const [createTopicOpen, setCreateTopicOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(256);
+  const isDragging = useRef(false);
 
   // Load bots and topics on mount
   const loadBots = useCallback(async () => {
@@ -66,21 +69,85 @@ function App() {
     }
   };
 
+  // Handle topic deletion
+  const handleDeleteTopic = async (id: string) => {
+    try {
+      await deleteTopic(id);
+      await loadTopics();
+      if (activeTopicId === id) {
+        setActiveTopicId(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete topic:", err);
+    }
+  };
+
+  // Handle topic import
+  const handleImportTopic = async () => {
+    try {
+      const filePath = await open({
+        filters: [{ name: "AI Group Chat Export", extensions: ["aigc.json"] }],
+        multiple: false,
+      });
+      if (filePath) {
+        const newTopicId = await importTopic(filePath as string);
+        await loadTopics();
+        setActiveTopicId(newTopicId);
+      }
+    } catch (err) {
+      console.error("Failed to import topic:", err);
+    }
+  };
+
+  // Sidebar resize drag
+  const handleMouseDown = useCallback(() => {
+    isDragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const newWidth = Math.min(Math.max(e.clientX, 200), 500);
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, []);
+
   // Handle bot changes (reload bots)
   const handleBotsChanged = () => {
     loadBots();
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-screen">
       {/* Sidebar */}
-      <Sidebar
-        onNewTopic={() => setCreateTopicOpen(true)}
-        onManageBots={() => setBotManagerOpen(true)}
+      <div className="shrink-0 border-r" style={{ width: sidebarWidth }}>
+        <Sidebar
+          onNewTopic={() => setCreateTopicOpen(true)}
+          onManageBots={() => setBotManagerOpen(true)}
+          onDeleteTopic={handleDeleteTopic}
+          onImportTopic={handleImportTopic}
+        />
+      </div>
+
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary/20 active:bg-primary/40"
       />
 
       {/* Main content */}
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         {activeTopicId ? (
           <ChatView />
         ) : (

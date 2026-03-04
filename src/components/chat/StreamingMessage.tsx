@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -9,7 +10,7 @@ interface StreamingMessageProps {
   bots: Bot[];
 }
 
-export function StreamingMessage({ state, bots }: StreamingMessageProps) {
+export const StreamingMessage = memo(function StreamingMessage({ state, bots }: StreamingMessageProps) {
   const bot = bots.find((b) => b.id === state.botId);
 
   return (
@@ -49,11 +50,20 @@ export function StreamingMessage({ state, bots }: StreamingMessageProps) {
                 </Markdown>
               </div>
             ) : !state.done ? (
-              <span className="text-sm text-muted-foreground">Thinking...</span>
+              <span className="flex gap-1 py-1">
+                <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+                <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+                <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+              </span>
             ) : null}
 
+            {/* Retry status */}
+            {state.status === "retrying" && state.retryInfo && (
+              <span className="block text-xs text-amber-500 mt-1">{state.retryInfo}</span>
+            )}
+
             {/* Pulsing cursor when streaming */}
-            {!state.done && (
+            {!state.done && state.content && (
               <span className="inline-block ml-0.5 w-2 h-4 bg-foreground/60 animate-pulse rounded-sm align-text-bottom" />
             )}
           </>
@@ -61,4 +71,4 @@ export function StreamingMessage({ state, bots }: StreamingMessageProps) {
       </div>
     </div>
   );
-}
+});
